@@ -39,40 +39,119 @@ void add_directory(const char *name) {
             if (len > 0 && filepath[len - 1] != '/') {
                 strcat(filepath, "/");
             }
+
+            
             char filepath1[256];
-            char filepath2[256];
-            char filepath3[256];
             strcpy(filepath1, filepath);
             strcat(filepath1, "reports.dat");
-            int fd = creat(filepath1, 0664);   // octal 0664 = rw-rw-r--
-            if (fd != -1) {
-                close(fd);
-                printf("File 'reports.dat' created successfully.\n");
+            FILE *fp = fopen(filepath1, "wb");
+            if (fp != NULL) {
+                fclose(fp);
+                if (chmod(filepath1, 0664) == -1) {
+                    perror("chmod failed for reports.dat");
+                } else {
+                    printf("File 'reports.dat' created and permissions set to 0664.\n");
+                }
             } else {
-                perror("Failed to create 'reports.dat'");
+                perror("fopen failed for reports.dat");
             }
+
+            
+            char filepath2[256];
             strcpy(filepath2, filepath);
             strcat(filepath2, "district.cfg");
-            fd = creat(filepath2, 0640);   // octal 0640 = rw-r-----
-            if (fd != -1) {
-                close(fd);
-                printf("File 'district.cfg' created successfully.\n");
+            fp = fopen(filepath2, "w");   // text mode is fine
+            if (fp != NULL) {
+                fclose(fp);
+                if (chmod(filepath2, 0640) == -1) {
+                    perror("chmod failed for district.cfg");
+                } else {
+                    printf("File 'district.cfg' created and permissions set to 0640.\n");
+                }
             } else {
-                perror("Failed to create 'district.cfg'");
+                perror("fopen failed for district.cfg");
             }
+
+            
+            char filepath3[256];
             strcpy(filepath3, filepath);
             strcat(filepath3, "logged_district");
-            fd = creat(filepath3, 0644);   // octal 0644 = rw-r--r--
-            if (fd != -1) {
-                close(fd);
-                printf("File 'logged_district' created successfully.\n");
+            fp = fopen(filepath3, "w");
+            if (fp != NULL) {
+                fclose(fp);
+                if (chmod(filepath3, 0644) == -1) {
+                    perror("chmod failed for logged_district");
+                } else {
+                    printf("File 'logged_district' created and permissions set to 0644.\n");
+                }
             } else {
-                perror("Failed to create 'logged_district'");
+                perror("fopen failed for logged_district");
             }
+
         } else {
             perror("mkdir failed");
         }
     }
+}
+
+#include <sys/stat.h>
+#include <stdio.h>
+
+void print_permissions(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == -1) {
+        perror("stat failed");
+        return;
+    }
+
+    
+    if (S_ISDIR(st.st_mode))      putchar('d');
+    else if (S_ISLNK(st.st_mode)) putchar('l');
+    else                          putchar('-');
+
+    // Owner permissions
+    putchar((st.st_mode & S_IRUSR) ? 'r' : '-');
+    putchar((st.st_mode & S_IWUSR) ? 'w' : '-');
+    putchar((st.st_mode & S_IXUSR) ? 'x' : '-');
+
+    // Group permissions
+    putchar((st.st_mode & S_IRGRP) ? 'r' : '-');
+    putchar((st.st_mode & S_IWGRP) ? 'w' : '-');
+    putchar((st.st_mode & S_IXGRP) ? 'x' : '-');
+
+    // Others permissions
+    putchar((st.st_mode & S_IROTH) ? 'r' : '-');
+    putchar((st.st_mode & S_IWOTH) ? 'w' : '-');
+    putchar((st.st_mode & S_IXOTH) ? 'x' : '-');
+
+    printf(" %s\n", path);
+}
+
+void list_directory(const char *dirpath) {
+    DIR *dir = opendir(dirpath);
+    if (!dir) {
+        perror("opendir failed");
+        return;
+    }
+
+    printf("\nContents of '%s':\n", dirpath);
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        
+        char fullpath[512];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, entry->d_name);
+
+        
+        print_permissions(fullpath);
+    }
+
+    closedir(dir);
 }
 
 
@@ -96,7 +175,15 @@ int main(int argc, char *argv[]){
     strcpy(user, argv[4]);
     printf("Role: %s\n", role);
     printf("User: %s\n", user);
-    add_directory(user);
+    if(strcmp(argv[5], "--add") == 0){
+        char district[20];
+        strcpy(district, argv[6]);
+        printf("Adding district: %s\n", district);
+        add_directory(district);
+    }
+    if(strcmp(argv[5], "--list") == 0){
+        list_directory(argv[6]);
+    }
     
     // ./city_manager --role manager --user alice --add downtown
     return 0;
