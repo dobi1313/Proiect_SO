@@ -6,6 +6,16 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
+
+typedef struct {
+    float X;
+    float Y;
+    char category[20];
+    int severity;
+    char description[256];
+} Report;
+
 
 int directory_exists(const char *name) {
     DIR *dir = opendir(".");
@@ -60,8 +70,10 @@ void add_directory(const char *name) {
             char filepath2[256];
             strcpy(filepath2, filepath);
             strcat(filepath2, "district.cfg");
-            fp = fopen(filepath2, "w");   // text mode is fine
+            fp = fopen(filepath2, "w");  
             if (fp != NULL) {
+                fprintf(fp,"%d", 1);
+                fprintf(fp,"%d", 0);
                 fclose(fp);
                 if (chmod(filepath2, 0640) == -1) {
                     perror("chmod failed for district.cfg");
@@ -93,9 +105,6 @@ void add_directory(const char *name) {
         }
     }
 }
-
-#include <sys/stat.h>
-#include <stdio.h>
 
 void print_permissions(const char *path) {
     struct stat st;
@@ -142,23 +151,123 @@ void list_directory(const char *dirpath) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
-
-        
         char fullpath[512];
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, entry->d_name);
-
-        
+        strcpy(fullpath, dirpath);
+        if (fullpath[strlen(fullpath) - 1] != '/') {
+            strcat(fullpath, "/");
+        }
+        strcat(fullpath, entry->d_name);
         print_permissions(fullpath);
     }
-
     closedir(dir);
+}
+
+void update_config(const char *dirpath, int severity, int next_id) {
+    char filepath[256];
+    strcpy(filepath, dirpath);
+    strcat(filepath, "/district.cfg");
+    FILE *fp = fopen(filepath, "w");
+    if (!fp) return;
+    fprintf(fp, "%d%d", severity, next_id);
+    fclose(fp);
+}
+int read_config(const char *dirpath,int *severity, int *next_id) {
+    char filepath[256];
+    strcpy(filepath, dirpath);
+    strcat(filepath, "/district.cfg");
+    FILE *fp = fopen(filepath, "r");
+    if (!fp) {
+        *severity = 1;  // default severity
+        *next_id = 0;   // default next_id
+        return 0;
+    }
+    char first = fgetc(fp);
+    if (first >= '0' && first <= '9') {
+        *severity = first - '0';
+    } else {
+        *severity = 1;
+    }
+
+    if (fscanf(fp, "%d", next_id) != 1) {
+        *next_id = 0;
+    }
+
+    fclose(fp);
+    return 1;   // success
+}
+
+Report read_report() {
+    Report report;
+    printf("Enter coord X:");
+    scanf("%f", &report.X);
+    printf("Enter coord Y:");
+    scanf("%f", &report.Y);
+    printf("Enter category(road/lighting/flooding/other):");
+    scanf("%19s", report.category);
+    printf("Enter severity(1-3):");
+    scanf("%d", &report.severity);
+    if(report.severity < 1 ){
+        report.severity = 1;
+    }
+    if(report.severity > 3){
+        report.severity = 3;
+    }
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);// Clear input buffer
+    printf("Enter description:");
+    fgets(report.description, sizeof(report.description), stdin);
+    report.description[strcspn(report.description, "\n")] = '\0';// Remove trailing newline
+    return report;
+}
+
+void add_report(const char *district, char *user, char *role) {
+    add_directory(district);
+    int severity, next_id;
+    read_config(district, &severity, &next_id);
+    Report report = read_report();
+    char filepath[256];
+    strcpy(filepath, district);
+    size_t len = strlen(filepath);
+    if (len > 0 && filepath[len - 1] != '/') {
+        strcat(filepath, "/");
+    }
+    strcat(filepath, "reports.dat");
+    FILE *fp = fopen(filepath, "ab");
+    time_t currentTime;
+    time(&currentTime);
+    if (fp != NULL) {
+        fprintf(fp, "Report ID: %d\n", next_id);
+        fprintf(fp, "User: %s\n", user);
+        fprintf(fp, "Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
+        fprintf(fp, "Category: %s\n", report.category);
+        fprintf(fp, "Severity: %d\n", report.severity);
+        fprintf(fp, "Description: %s\n", report.description);
+        fprintf(fp, "Timestamp: %s", ctime(&currentTime));
+        fclose(fp);
+        printf("Report added successfully to '%s'.\n", filepath);
+        update_config(district, severity, next_id + 1);
+    } else {
+        perror("fopen failed for reports.dat");
+    }
+    strcpy(filepath, district);
+    strcat(filepath, "/logged_district");
+    fp = fopen(filepath, "a");
+    if (fp != NULL) {
+        fprintf(fp, "User: %s ", user);
+        fprintf(fp, "Role: %s ", role);
+        fprintf(fp, "Timestamp: %s\n", ctime(&currentTime));
+        fclose(fp);
+        printf("Logged district '%s' to '%s'.\n", district, filepath);
+    } else {
+        perror("fopen failed for logged_district");
+    }
 }
 
 
 
 
 int main(int argc, char *argv[]){
-    if(argc < 6){
+    if(argc < 6){// Minimum arguments
         printf("Too Few Arguments\n");
         return 1;
     }
@@ -178,8 +287,7 @@ int main(int argc, char *argv[]){
     if(strcmp(argv[5], "--add") == 0){
         char district[20];
         strcpy(district, argv[6]);
-        printf("Adding district: %s\n", district);
-        add_directory(district);
+        add_report(district, user, role);
     }
     if(strcmp(argv[5], "--list") == 0){
         list_directory(argv[6]);
