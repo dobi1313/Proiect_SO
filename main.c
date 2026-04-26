@@ -12,11 +12,14 @@ typedef struct {
     int id;
     float X;
     float Y;
+    char name[20];
     char category[20];
     int severity;
     char description[256];
     char timestamp[26];
 } Report;
+
+
 
 
 int directory_exists(const char *name) {
@@ -37,12 +40,12 @@ int directory_exists(const char *name) {
     closedir(dir);
     return found;
 }
+
 void add_directory(const char *name) {
     if (directory_exists(name)) {
-        printf("Directory '%s' already exists.\n", name);
+        return;
     } else {
         if (mkdir(name, 0750) == 0) {
-            printf("Directory '%s' created successfully.\n", name);
             char filepath[256];
             strcpy(filepath, name);
             size_t len = strlen(filepath);
@@ -59,9 +62,7 @@ void add_directory(const char *name) {
                 close(fd);
                 if (chmod(filepath1, 0664) == -1) {
                     perror("chmod failed for reports.dat");
-                } else {
-                    printf("File 'reports.dat' created and permissions set to 0664.\n");
-                }
+                } 
             } else {
                 perror("open failed for reports.dat");
             }
@@ -78,8 +79,6 @@ void add_directory(const char *name) {
                 close(fd);
                 if (chmod(filepath2, 0640) == -1) {
                     perror("chmod failed for district.cfg");
-                } else {
-                    printf("File 'district.cfg' created and permissions set to 0640.\n");
                 }
             } else {
                 perror("open failed for district.cfg");
@@ -94,9 +93,7 @@ void add_directory(const char *name) {
                 close(fd);
                 if (chmod(filepath3, 0644) == -1) {
                     perror("chmod failed for logged_district");
-                } else {
-                    printf("File 'logged_district' created and permissions set to 0644.\n");
-                }
+                } 
             } else {
                 perror("open failed for logged_district");
             }
@@ -235,7 +232,7 @@ void add_report(const char *district, char *user, char *role) {
     read_config(district, &severity, &next_id);
     Report report = read_report();
     report.id = next_id;
-
+    strcpy(report.name, user);
     char filepath[256];
     strcpy(filepath, district);
     size_t len = strlen(filepath);
@@ -263,7 +260,6 @@ void add_report(const char *district, char *user, char *role) {
         int buflen = snprintf(buf, sizeof(buf), "User: %s Role: %s Timestamp: %s\n", user, role, ctime(&currentTime));
         write(fd, buf, buflen);
         close(fd);
-        printf("Logged district '%s' to '%s'.\n", district, filepath);
     } else {
         perror("open failed for logged_district");
     }
@@ -294,6 +290,7 @@ void list_reports(const char *district) {
     printf("\nReports in district '%s':\n", district);
     while (read(fd, &report, sizeof(Report)) == sizeof(Report)) {
         printf("ID: %d\n", report.id);
+        printf("Inspector: %s\n", report.name);
         printf("Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
         printf("Category: %s\n", report.category);
         printf("Severity: %d\n", report.severity);
@@ -321,6 +318,7 @@ void view_report(const char *district, int report_id) {
     while (read(fd, &report, sizeof(Report)) == sizeof(Report)) {
         if (report.id == report_id) {
             printf("ID: %d\n", report.id);
+            printf("Inspector: %s\n", report.name);
             printf("Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
             printf("Category: %s\n", report.category);
             printf("Severity: %d\n", report.severity);
@@ -335,10 +333,54 @@ void view_report(const char *district, int report_id) {
     }
     close(fd);
 }
-
 void remove_report(const char *district, int report_id) {
+    char filepath[256];
+    strcpy(filepath, district);
+    size_t len = strlen(filepath);
+    if (len > 0 && filepath[len - 1] != '/') {
+        strcat(filepath, "/");
+    }
+    strcat(filepath, "reports.dat");
+    int fd = open(filepath, O_RDWR);
+    if (fd == -1) {
+        perror("open failed for reports.dat");
+        return;
+    }
+    int x = 0;
+    Report report;
     
+     while (read(fd, &report, sizeof(Report)) == sizeof(Report)) {
+        if (report.id == report_id) {
+            x = 1;
+            off_t write_pos = lseek(fd, -(off_t)sizeof(Report), SEEK_CUR);
+
+            Report buffer;
+            while (read(fd, &buffer, sizeof(Report)) == sizeof(Report)) {
+                lseek(fd, write_pos, SEEK_SET);
+                write(fd, &buffer, sizeof(Report));
+                write_pos += sizeof(Report);
+                lseek(fd, write_pos + sizeof(Report), SEEK_SET);
+            }
+
+            ftruncate(fd, write_pos);
+            break;
+        }
+    }
+    if (!x) {
+        printf("Report with ID %d not found in district '%s'.\n", report_id, district);
+    }
+    close(fd);
 }
+void change_config(const char *district, int new_severity) {
+    int severity, next_id;
+    if (read_config(district, &severity, &next_id)) {
+        update_config(district, new_severity, next_id);
+    } else {
+        printf("Failed to read config for district '%s'.\n", district);
+    }
+}
+
+
 
 int main(int argc, char *argv[]){
     if(argc < 6){// Minimum arguments
@@ -356,17 +398,25 @@ int main(int argc, char *argv[]){
         return 1;
     }
     strcpy(user, argv[4]);
-    if(strcmp(argv[5], "--add") == 0){
+    if (strcmp(argv[5], "--add") == 0) {
         char district[20];
         strcpy(district, argv[6]);
         add_report(district, user, role);
     }
-    if(strcmp(argv[5], "--list") == 0){
+    else if (strcmp(argv[5], "--list") == 0) {
         list_reports(argv[6]);
     }
-    if(strcmp(argv[5], "--view") == 0){
+    else if (strcmp(argv[5], "--view") == 0) {
         int report_id = atoi(argv[7]);
         view_report(argv[6], report_id);
+    }
+    else if (strcmp(argv[5], "--remove") == 0) {
+        int report_id = atoi(argv[7]);
+        remove_report(argv[6], report_id);
+    }
+    else if (strcmp(argv[5], "--update-config") == 0) {
+        int new_severity = atoi(argv[7]);
+        change_config(argv[6], new_severity);
     }
     
     // ./city_manager --role manager --user alice --add downtown
