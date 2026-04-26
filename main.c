@@ -21,7 +21,111 @@ typedef struct {
 
 
 
-
+int parse_condition(const char *input, char *field, char *op, char *value) {
+    
+    const char *first_colon = strchr(input, ':');
+    if (!first_colon) return 0;
+ 
+    size_t field_len = first_colon - input;
+    if (field_len == 0 || field_len >= 32) return 0;
+    strncpy(field, input, field_len);
+    field[field_len] = '\0';
+ 
+    
+    const char *second_colon = strchr(first_colon + 1, ':');
+    if (!second_colon) return 0;
+ 
+    size_t op_len = second_colon - (first_colon + 1);
+    if (op_len == 0 || op_len > 2) return 0;
+    strncpy(op, first_colon + 1, op_len);
+    op[op_len] = '\0';
+ 
+    
+    const char *val_start = second_colon + 1;
+    if (*val_start == '\0') return 0;
+    strncpy(value, val_start, 63);
+    value[63] = '\0';
+ 
+    return 1;
+}
+ 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * AI-ASSISTED: match_condition
+ * Returns 1 if the report satisfies the condition, 0 otherwise.
+ * Fields: severity (int), category (string), inspector/name (string),
+ *         timestamp (string, prefix match via strncmp).
+ * ───────────────────────────────────────────────────────────────────────────── */
+int match_condition(Report *r, const char *field, const char *op, const char *value) {
+    
+    printf("Matching condition: field='%s', op='%s', value='%s'\n", field, op, value);
+    if (strcmp(field, "severity") == 0) {
+        int report_val = r->severity;
+        int cond_val   = atoi(value);
+        if (strcmp(op, "==") == 0) return report_val == cond_val;
+        if (strcmp(op, "!=") == 0) return report_val != cond_val;
+        if (strcmp(op, "<")  == 0) return report_val <  cond_val;
+        if (strcmp(op, "<=") == 0) return report_val <= cond_val;
+        if (strcmp(op, ">")  == 0) return report_val >  cond_val;
+        if (strcmp(op, ">=") == 0) return report_val >= cond_val;
+        return 0;
+    }
+ 
+    
+    if (strcmp(field, "category") == 0) {
+        int cmp = strcmp(r->category, value);
+        if (strcmp(op, "==") == 0) return cmp == 0;
+        if (strcmp(op, "!=") == 0) return cmp != 0;
+        if (strcmp(op, "<")  == 0) return cmp <  0;
+        if (strcmp(op, "<=") == 0) return cmp <= 0;
+        if (strcmp(op, ">")  == 0) return cmp >  0;
+        if (strcmp(op, ">=") == 0) return cmp >= 0;
+        return 0;
+    }
+ 
+    
+    if (strcmp(field, "inspector") == 0) {
+        int cmp = strcmp(r->name, value);
+        if (strcmp(op, "==") == 0) return cmp == 0;
+        if (strcmp(op, "!=") == 0) return cmp != 0;
+        if (strcmp(op, "<")  == 0) return cmp <  0;
+        if (strcmp(op, "<=") == 0) return cmp <= 0;
+        if (strcmp(op, ">")  == 0) return cmp >  0;
+        if (strcmp(op, ">=") == 0) return cmp >= 0;
+        return 0;
+    }
+ 
+    
+    if (strcmp(field, "timestamp") == 0) {
+        int cmp = strncmp(r->timestamp, value, strlen(value));
+        if (strcmp(op, "==") == 0) return cmp == 0;
+        if (strcmp(op, "!=") == 0) return cmp != 0;
+        if (strcmp(op, "<")  == 0) return cmp <  0;
+        if (strcmp(op, "<=") == 0) return cmp <= 0;
+        if (strcmp(op, ">")  == 0) return cmp >  0;
+        if (strcmp(op, ">=") == 0) return cmp >= 0;
+        return 0;
+    }
+ 
+    
+    return 0;
+}
+void create_symlink(const char *district) {
+    char link_name[64];
+    snprintf(link_name, sizeof(link_name), "active_reports-%s", district);
+ 
+    char target[256];
+    snprintf(target, sizeof(target), "%s/reports.dat", district);
+ 
+    /* Remove stale link if it already exists */
+    struct stat lst;
+    if (lstat(link_name, &lst) == 0) {
+        unlink(link_name);
+    }
+ 
+    if (symlink(target, link_name) == -1) {
+        perror("symlink failed");
+    }
+}
 int directory_exists(const char *name) {
     DIR *dir = opendir(".");
     if (!dir) return 0;
@@ -40,9 +144,9 @@ int directory_exists(const char *name) {
     closedir(dir);
     return found;
 }
-
 void add_directory(const char *name) {
     if (directory_exists(name)) {
+        create_symlink(name);
         return;
     } else {
         if (mkdir(name, 0750) == 0) {
@@ -97,39 +201,42 @@ void add_directory(const char *name) {
             } else {
                 perror("open failed for logged_district");
             }
-
+            create_symlink(name);
         } else {
             perror("mkdir failed");
         }
     }
 }
 void print_permissions(const char *path) {
-    struct stat st;
-    if (stat(path, &st) == -1) {
-        perror("stat failed");
+    struct stat lst;
+    if (lstat(path, &lst) == -1) {
+        perror("lstat failed");
         return;
     }
-
-    
-    if (S_ISDIR(st.st_mode))      putchar('d');
-    else if (S_ISLNK(st.st_mode)) putchar('l');
-    else                          putchar('-');
-
-    // Owner permissions
-    putchar((st.st_mode & S_IRUSR) ? 'r' : '-');
-    putchar((st.st_mode & S_IWUSR) ? 'w' : '-');
-    putchar((st.st_mode & S_IXUSR) ? 'x' : '-');
-
-    // Group permissions
-    putchar((st.st_mode & S_IRGRP) ? 'r' : '-');
-    putchar((st.st_mode & S_IWGRP) ? 'w' : '-');
-    putchar((st.st_mode & S_IXGRP) ? 'x' : '-');
-
-    // Others permissions
-    putchar((st.st_mode & S_IROTH) ? 'r' : '-');
-    putchar((st.st_mode & S_IWOTH) ? 'w' : '-');
-    putchar((st.st_mode & S_IXOTH) ? 'x' : '-');
-
+ 
+    /* Detect dangling symlinks */
+    if (S_ISLNK(lst.st_mode)) {
+        struct stat st;
+        if (stat(path, &st) == -1) {
+            printf("WARNING: dangling symlink: %s\n", path);
+            return;
+        }
+    }
+ 
+    if (S_ISDIR(lst.st_mode))      putchar('d');
+    else if (S_ISLNK(lst.st_mode)) putchar('l');
+    else                           putchar('-');
+ 
+    putchar((lst.st_mode & S_IRUSR) ? 'r' : '-');
+    putchar((lst.st_mode & S_IWUSR) ? 'w' : '-');
+    putchar((lst.st_mode & S_IXUSR) ? 'x' : '-');
+    putchar((lst.st_mode & S_IRGRP) ? 'r' : '-');
+    putchar((lst.st_mode & S_IWGRP) ? 'w' : '-');
+    putchar((lst.st_mode & S_IXGRP) ? 'x' : '-');
+    putchar((lst.st_mode & S_IROTH) ? 'r' : '-');
+    putchar((lst.st_mode & S_IWOTH) ? 'w' : '-');
+    putchar((lst.st_mode & S_IXOTH) ? 'x' : '-');
+ 
     printf(" %s\n", path);
 }
 void list_directory(const char *dirpath) {
@@ -379,7 +486,82 @@ void change_config(const char *district, int new_severity) {
         printf("Failed to read config for district '%s'.\n", district);
     }
 }
+void filter_reports(const char *district, char **conditions, int num_conditions) {
+    char filepath[256];
+    strcpy(filepath, district);
+    size_t len = strlen(filepath);
+    if (len > 0 && filepath[len - 1] != '/') strcat(filepath, "/");
+    strcat(filepath, "reports.dat");
+ 
+    int fd = open(filepath, O_RDONLY);
+    if (fd == -1) { perror("open failed for reports.dat"); return; }
+ 
+    
+    char fields[16][32];
+    char ops[16][4];
+    char values[16][64];
+ 
+    for (int i = 0; i < num_conditions; i++) {
+        if (!parse_condition(conditions[i], fields[i], ops[i], values[i])) {
+            fprintf(stderr, "Invalid condition: '%s'\n", conditions[i]);
+            close(fd);
+            return;
+        }
+    }
+ 
+    printf("\nFiltered reports in district '%s':\n", district);
+    int printed = 0;
+    Report report;
+    while (read(fd, &report, sizeof(Report)) == sizeof(Report)) {
+        int all_match = 1;
+        for (int i = 0; i < num_conditions; i++) {
+            if (!match_condition(&report, fields[i], ops[i], values[i])) {
+                all_match = 0;
+                break;
+            }
+        }
+        if (all_match) {
+            printf("ID: %d\n", report.id);
+            printf("Inspector: %s\n", report.name);
+            printf("Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
+            printf("Category: %s\n", report.category);
+            printf("Severity: %d\n", report.severity);
+            printf("Description: %s\n", report.description);
+            printf("Timestamp: %s\n", report.timestamp);
+            printf("-------------------------\n");
+            printed++;
+        }
+    }
+    if (!printed) printf("No reports matched the given conditions.\n");
+    close(fd);
+}
 
+int permission_check(const char *func, const char *role, const char *district) {
+    char filepath[256];
+    strcpy(filepath, district);
+    size_t len = strlen(filepath);
+    if (len > 0 && filepath[len - 1] != '/') {
+        strcat(filepath, "/");
+    }
+    if (strcmp(func, "--remove") == 0 || strcmp(func, "--update-config") == 0) {
+        strcat(filepath, "reports.dat");
+    }
+    struct stat lst;
+    if (lstat(filepath, &lst) == -1) {
+        perror("lstat failed");
+        return 0;
+    }
+    
+        if (strcmp(role, "manager") == 0) {
+            return (lst.st_mode & S_IRUSR) && (lst.st_mode & S_IWUSR);
+        } else if (strcmp(role, "inspector") == 0) {
+            return (lst.st_mode & S_IRGRP) && (lst.st_mode & S_IWGRP);
+        } else if (strcmp(role, "citizen") == 0) {
+            return (lst.st_mode & S_IROTH) && (lst.st_mode & S_IWOTH);
+        }
+
+    return 1; // other functions are allowed for all roles
+}
 
 
 int main(int argc, char *argv[]){
@@ -398,7 +580,7 @@ int main(int argc, char *argv[]){
         return 1;
     }
     strcpy(user, argv[4]);
-    if (strcmp(argv[5], "--add") == 0) {
+    if (strcmp(argv[5], "--add") == 0 ) {
         char district[20];
         strcpy(district, argv[6]);
         add_report(district, user, role);
@@ -410,15 +592,27 @@ int main(int argc, char *argv[]){
         int report_id = atoi(argv[7]);
         view_report(argv[6], report_id);
     }
-    else if (strcmp(argv[5], "--remove") == 0) {
+    else if (strcmp(argv[5], "--remove") == 0 && permission_check("--remove", role, argv[6])) {
         int report_id = atoi(argv[7]);
         remove_report(argv[6], report_id);
     }
-    else if (strcmp(argv[5], "--update-config") == 0) {
+    else if (strcmp(argv[5], "--update-config") == 0 && permission_check("--update-config", role, argv[6])) {
         int new_severity = atoi(argv[7]);
         change_config(argv[6], new_severity);
+    } else if (strcmp(argv[5], "--filter") == 0) {
+        if (argc < 8) {
+            fprintf(stderr, "Usage: --filter <district> <condition> [condition ...]\n");
+            return 1;
+        }
+        char *district = argv[6];
+        char **conds   = &argv[7];
+        int   num      = argc - 7;
+        filter_reports(district, conds, num);
     }
-    
+    else {
+        printf("Unknown command: %s\n", argv[5]);
+        return 1;
+    }
     // ./city_manager --role manager --user alice --add downtown
     return 0;
 }
