@@ -161,3 +161,7 @@ All symlink logic is original:
 - AI-generated C code often omits buffer-size guards. Reviewing every
   `strcpy` / `strncpy` / `snprintf` call for potential overflow is
   essential before accepting generated code.
+
+
+## Phase 2 ##
+Mostly used ai to understand how signals work and help me make the loop for signals
