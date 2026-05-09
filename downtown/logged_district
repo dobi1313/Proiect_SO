@@ -1,4 +1,8 @@
-User: john Role: manager Timestamp: Sun Apr 26 17:34:19 2026
-
-User: john Role: manager Timestamp: Sun Apr 26 17:34:43 2026
-
+User: alice Role: manager Timestamp: Sat May  9 20:55:14 2026
+ Monitor: could not be informed
+User: alice Role: manager Timestamp: Sat May  9 20:55:42 2026
+ Monitor: could not be informed
+User: alice Role: manager Timestamp: Sat May  9 20:59:53 2026
+ Monitor: could not be informed
+User: alice Role: manager Timestamp: Sat May  9 21:01:44 2026
+ Monitor: notified successfully

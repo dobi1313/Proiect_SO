@@ -7,6 +7,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 typedef struct {
     int id;
@@ -143,6 +145,23 @@ int directory_exists(const char *name) {
     }
     closedir(dir);
     return found;
+}
+int notify_monitor() {
+    FILE *f = fopen(".monitor_pid", "r");
+    if (f == NULL) {
+        return 0;
+    }
+    pid_t pid;
+    if (fscanf(f, "%d", &pid) != 1) {
+        fclose(f);
+        return 0;
+    }
+    fclose(f);
+
+    if (kill(pid, SIGUSR1) == -1) {
+        return 0;
+    }
+    return 1;
 }
 void add_directory(const char *name) {
     if (directory_exists(name)) {
@@ -359,12 +378,20 @@ void add_report(const char *district, char *user, char *role) {
     } else {
         perror("open failed for reports.dat");
     }
+    int notified = notify_monitor();
     strcpy(filepath, district);
     strcat(filepath, "/logged_district");
     fd = open(filepath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd != -1) {
         char buf[512];
-        int buflen = snprintf(buf, sizeof(buf), "User: %s Role: %s Timestamp: %s\n", user, role, ctime(&currentTime));
+        int buflen;
+        if (notified) {
+            buflen = snprintf(buf, sizeof(buf),
+                "User: %s Role: %s Timestamp: %s Monitor: notified successfully\n",user, role, ctime(&currentTime));
+        } else {
+            buflen = snprintf(buf, sizeof(buf),
+                "User: %s Role: %s Timestamp: %s Monitor: could not be informed\n",user, role, ctime(&currentTime));
+        }
         write(fd, buf, buflen);
         close(fd);
     } else {
@@ -543,7 +570,7 @@ int permission_check(const char *func, const char *role, const char *district) {
     if (len > 0 && filepath[len - 1] != '/') {
         strcat(filepath, "/");
     }
-    if (strcmp(func, "--remove") == 0 || strcmp(func, "--update-config") == 0) {
+    if (strcmp(func, "--remove") == 0 || strcmp(func, "--update-config") == 0 || strcmp(func, "--remove-district") == 0) {
         strcat(filepath, "reports.dat");
     }
     struct stat lst;
@@ -562,6 +589,50 @@ int permission_check(const char *func, const char *role, const char *district) {
 
     return 1; // other functions are allowed for all roles
 }
+
+int is_safe_name(const char *name) {
+    if (name == NULL || *name == '\0')
+        return 0;  // empty name
+
+    // Reject any path separator or parent directory patterns
+    if (strchr(name, '/') != NULL) return 0;
+    if (strstr(name, "..") != NULL) return 0;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return 0;
+
+    // Reject names that start with a dash (could be rm option)
+    if (name[0] == '-') return 0;
+    return 1;
+}
+
+
+void remove_district(const char *district) {
+    // add unlink logic here to remove the symlink if it exists
+    if(directory_exists(district)){
+        if (!is_safe_name(district)) {
+            printf("Invalid district name\n");
+            exit(1);
+        }
+        pid_t pid = fork();
+        if (pid == 0) {
+            execlp("rm", "rm", "-rf",district, NULL);
+            // If execlp fails
+            perror("execlp");
+            exit(1);
+        } else if (pid > 0) {
+            char link_name[64];
+            snprintf(link_name, sizeof(link_name), "active_reports-%s", district);
+            unlink(link_name); // Remove the symlink
+            waitpid(pid, NULL, 0); // Wait for the child process to finish
+        } else {
+            perror("fork");
+            exit(1);
+        }
+    }
+    else {
+        printf("District '%s' does not exist.\n", district);
+    }
+}
+
 
 
 int main(int argc, char *argv[]){
@@ -608,6 +679,9 @@ int main(int argc, char *argv[]){
         char **conds   = &argv[7];
         int   num      = argc - 7;
         filter_reports(district, conds, num);
+    }
+    else if (strcmp(argv[5], "--remove-district") == 0 ) {//to do permission check
+        remove_district(argv[6]);
     }
     else {
         printf("Unknown command: %s\n", argv[5]);
