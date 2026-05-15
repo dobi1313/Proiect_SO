@@ -8,6 +8,14 @@
 #include <signal.h>
 #include <unistd.h>
 
+int check_monitor_on(){
+    int fd = open(".monitor_pid", O_RDONLY);
+    if (fd == -1) {
+        return 0; // Monitor not running
+    }
+    return 1; // Monitor is running
+}
+
 void get_pid() {
     int f = open(".monitor_pid", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (f == -1) {
@@ -33,6 +41,11 @@ static void sig_handler(int signum) {
 }
 
 int main(int argc, char *argv[]) {
+    if(check_monitor_on()) {
+        printf("Monitor is already running.\n");
+        return 0;
+    }
+    else{
     struct sigaction sa;
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
@@ -47,4 +60,5 @@ int main(int argc, char *argv[]) {
         pause();    // wait for signals
     }
     return 0;
+    }
 }

@@ -147,16 +147,16 @@ int directory_exists(const char *name) {
     return found;
 }
 int notify_monitor() {
-    FILE *f = fopen(".monitor_pid", "r");
-    if (f == NULL) {
+    int f = open(".monitor_pid", O_RDONLY);
+    if (f == -1) {
         return 0;
     }
     pid_t pid;
-    if (fscanf(f, "%d", &pid) != 1) {
-        fclose(f);
+    if (read(f, &pid, sizeof(pid)) != sizeof(pid)) {
+        close(f);
         return 0;
     }
-    fclose(f);
+    close(f);
 
     if (kill(pid, SIGUSR1) == -1) {
         return 0;
@@ -424,7 +424,7 @@ void list_reports(const char *district) {
     printf("\nReports in district '%s':\n", district);
     while (read(fd, &report, sizeof(Report)) == sizeof(Report)) {
         printf("ID: %d\n", report.id);
-        printf("Inspector: %s\n", report.name);
+        printf("User: %s\n", report.name);
         printf("Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
         printf("Category: %s\n", report.category);
         printf("Severity: %d\n", report.severity);
@@ -452,7 +452,7 @@ void view_report(const char *district, int report_id) {
     while (read(fd, &report, sizeof(Report)) == sizeof(Report)) {
         if (report.id == report_id) {
             printf("ID: %d\n", report.id);
-            printf("Inspector: %s\n", report.name);
+            printf("User: %s\n", report.name);
             printf("Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
             printf("Category: %s\n", report.category);
             printf("Severity: %d\n", report.severity);
@@ -549,7 +549,7 @@ void filter_reports(const char *district, char **conditions, int num_conditions)
         }
         if (all_match) {
             printf("ID: %d\n", report.id);
-            printf("Inspector: %s\n", report.name);
+            printf("User: %s\n", report.name);
             printf("Coordinates: (%.2f, %.2f)\n", report.X, report.Y);
             printf("Category: %s\n", report.category);
             printf("Severity: %d\n", report.severity);
