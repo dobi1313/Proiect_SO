@@ -9,6 +9,9 @@
 #include <time.h>
 #include <sys/wait.h>
 
+#define MAX_DISTRICTS 64
+#define MAX_LINE 256
+
 int directory_exists(const char *name) {
     struct stat st;
     return (stat(name, &st) == 0 && S_ISDIR(st.st_mode));
@@ -46,23 +49,23 @@ void hub_mon(){
     }
 }
 
-void calc_scores(int district_count, char **districts) {
-    for (int i = 0; i < district_count; i++) {
-        if(!directory_exists(districts[i])) {
-            fprintf(stderr, "District '%s' does not exist, skipping...\n", districts[i]);
-            continue;
+void calc_scores( char *district) {
+    
+        if(!directory_exists(district)) {
+            fprintf(stderr, "District '%s' does not exist, skipping...\n", district);
+            return;
         }
         int fd[2];
         if (pipe(fd) == -1) {
             perror("pipe failed");
-            continue;
+            return;
         }
         pid_t pid = fork();
         if (pid == -1) {
             perror("fork failed");
             close(fd[0]);
             close(fd[1]);
-            continue;
+            return;
         } else if (pid == 0) {
             close(fd[0]);
             if(dup2(fd[1], 1) == -1) {
@@ -70,7 +73,7 @@ void calc_scores(int district_count, char **districts) {
                 exit(1);
             }
             close(fd[1]);
-            execl("./scorer", "./scorer", districts[i], NULL);
+            execl("./scorer", "./scorer", district, NULL);
             perror("execl failed");
             exit(1);
         }
@@ -78,36 +81,67 @@ void calc_scores(int district_count, char **districts) {
             close(fd[1]);
             char buffer[256];
             int n;
-            printf("Scores for district '%s':\n", districts[i]);
+            printf("Scores for district '%s':\n", district);
             while ((n = read(fd[0], buffer, sizeof(buffer) - 1)) > 0) {
                 buffer[n] = '\0';
                 printf("%s", buffer);
             }
             close(fd[0]);
         }
-    }
-    for (int i = 0; i < district_count; i++) {
-        wait(NULL);
-    }
+    
 }
 
 
-int main(int argc, char *argv[]) {
-    if(argc < 2) {
-        fprintf(stderr, "Usage: %s <district1> [<district2> ...]\n", argv[0]);
+static char *read_line(char *buf, int size) {
+    if (!fgets(buf, size, stdin))
+        return NULL;
+    buf[strcspn(buf, "\n")] = '\0';   /* strip newline */
+    return buf;
+}
+
+int main(void) {
+    char line[MAX_LINE];
+
+    printf("Enter command: ");
+    fflush(stdout);
+
+    if (!read_line(line, sizeof(line))) {
+        fprintf(stderr, "Failed to read command.\n");
         return 1;
     }
-    if(strcmp(argv[1], "start_monitor") == 0) {
-    printf("Starting City Hub...\n");
-    hub_mon();
-    }
-    if(strcmp(argv[1], "calculate_scores") == 0) {
-        if(argc < 3) {
-            fprintf(stderr, "Usage: %s calculate_scores <district1> [<district2> ...]\n", argv[0]);
-            return 1;
+
+    if (strcmp(line, "start_monitor") == 0) {
+        printf("Starting City Hub...\n");
+        hub_mon();
+
+    } else if (strcmp(line, "calc_scores") == 0) {
+        
+        printf("Enter districts (one per line, empty line to finish):\n");
+        fflush(stdout);
+
+        
+
+    while (1) {
+        printf("  district: ");
+        fflush(stdout);
+
+        if (!read_line(line, sizeof(line)) || line[0] == '\0')
+            break;
+
+        if(strcmp(line,"end") == 0)
+            break;
+        if (!directory_exists(line)) {
+            fprintf(stderr, "Warning: '%s' is not a valid district folder.\n", line);
+            continue;
         }
-        calc_scores(argc - 2, &argv[2]);
+
+        calc_scores(line);
     }
-    
+
+    } else {
+        fprintf(stderr, "Unknown command: '%s'\n", line);
+        return 1;
+    }
+
     return 0;
 }

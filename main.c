@@ -570,7 +570,14 @@ int permission_check(const char *func, const char *role, const char *district) {
     if (len > 0 && filepath[len - 1] != '/') {
         strcat(filepath, "/");
     }
-    if (strcmp(func, "--remove") == 0 || strcmp(func, "--update-config") == 0 || strcmp(func, "--remove-district") == 0) {
+    if(strcmp(func, "--remove-district") == 0){
+        if(strcmp(role, "manager") == 0){
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+    if (strcmp(func, "--remove") == 0 || strcmp(func, "--update-config") == 0 || strcmp(func, "--add") == 0) {
         strcat(filepath, "reports.dat");
     }
     struct stat lst;
@@ -578,12 +585,11 @@ int permission_check(const char *func, const char *role, const char *district) {
         perror("lstat failed");
         return 0;
     }
-    
         if (strcmp(role, "manager") == 0) {
             return (lst.st_mode & S_IRUSR) && (lst.st_mode & S_IWUSR);
         } else if (strcmp(role, "inspector") == 0) {
             return (lst.st_mode & S_IRGRP) && (lst.st_mode & S_IWGRP);
-        } else if (strcmp(role, "citizen") == 0) {
+        } else if (strcmp(role, "other") == 0 || strcmp(role, "visitor") == 0 || strcmp(role, "citizen") == 0) {
             return (lst.st_mode & S_IROTH) && (lst.st_mode & S_IWOTH);
         }
 
@@ -651,7 +657,7 @@ int main(int argc, char *argv[]){
         return 1;
     }
     strcpy(user, argv[4]);
-    if (strcmp(argv[5], "--add") == 0 ) {
+    if (strcmp(argv[5], "--add") == 0 && permission_check("--add", role, argv[6])) {
         char district[20];
         strcpy(district, argv[6]);
         add_report(district, user, role);
@@ -660,6 +666,7 @@ int main(int argc, char *argv[]){
         list_reports(argv[6]);
     }
     else if (strcmp(argv[5], "--view") == 0) {
+        
         int report_id = atoi(argv[7]);
         view_report(argv[6], report_id);
     }
@@ -680,13 +687,13 @@ int main(int argc, char *argv[]){
         int   num      = argc - 7;
         filter_reports(district, conds, num);
     }
-    else if (strcmp(argv[5], "--remove-district") == 0 ) {//to do permission check
+    else if (strcmp(argv[5], "--remove-district") == 0 && permission_check("--remove-district", role, argv[6])) {//to do permission check
         remove_district(argv[6]);
     }
     else {
         printf("Unknown command: %s\n", argv[5]);
         return 1;
     }
-    // ./city_manager --role manager --user alice --add downtown
+    // ./city_manager --role inspector --user alice --add downtown
     return 0;
 }

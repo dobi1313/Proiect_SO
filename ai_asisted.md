@@ -165,3 +165,6 @@ All symlink logic is original:
 
 ## Phase 2 ##
 Mostly used ai to understand how signals work and help me make the loop for signals
+
+## PHASE 3 ##
+Used ai to help at piping and reading the districts from the stdin in case of using the calc_scores in city_hub

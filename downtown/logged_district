@@ -10,3 +10,5 @@ User: alice Role: manager Timestamp: Wed May 13 08:35:39 2026
  Monitor: could not be informed
 User: alice Role: manager Timestamp: Wed May 13 09:38:54 2026
  Monitor: notified successfully
+User: al Role: manager Timestamp: Wed May 20 08:42:15 2026
+ Monitor: notified successfully
